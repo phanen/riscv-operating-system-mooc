@@ -1,43 +1,45 @@
 include ../code/common.mk
 
-SRCS_ASM = $(shell find $(abspath .) -name "*.S" -or -name "*.s")
-SRCS_C = $(shell find $(abspath .) -name "*.c")
+ifeq ($(origin EXEC), undefined)
+	EXEC=test
+endif
 
-OBJS = $(SRCS_ASM:.S=.o)
-OBJS += $(SRCS_C:.c=.o)
+
+ifeq ($(origin t), undefined)
+	t=s
+endif
+
+SRC = ${EXEC}.${t}
+
+GDBINIT = gdbinit
 
 .DEFAULT_GOAL := all
-all: os.elf
+all:
+	@${CC} ${CFLAGS} ${SRC} -Ttext=0x80000000 -o ${EXEC}.elf
+	@${OBJCOPY} -O binary ${EXEC}.elf ${EXEC}.bin
 
-# start.o must be the first in dependency!
-os.elf: ${OBJS}
-	${CC} ${CFLAGS} -T os.ld -o os.elf $^
-	${OBJCOPY} -O binary os.elf os.bin
-
-%.o : %.c
-	${CC} ${CFLAGS} -c -o $@ $<
-
-%.o : %.S
-	${CC} ${CFLAGS} -c -o $@ $<
-
+.PHONY : run
 run: all
-	@${QEMU} -M ? | grep virt >/dev/null || exit
 	@echo "Press Ctrl-A and then X to exit QEMU"
 	@echo "------------------------------------"
-	@${QEMU} ${QFLAGS} -kernel os.elf
+	@echo "No output, please run 'make debug' to see details"
+	@${QEMU} ${QFLAGS} -kernel ./${EXEC}.elf
 
 .PHONY : debug
 debug: all
 	@echo "Press Ctrl-C and then input 'quit' to exit GDB and QEMU"
 	@echo "-------------------------------------------------------"
-	@${QEMU} ${QFLAGS} -kernel os.elf -s -S &
-	@${GDB} os.elf -q -x ../gdbinit
+	@${QEMU} ${QFLAGS} -kernel ${EXEC}.elf -s -S &
+	@${GDB} ${EXEC}.elf -q -x ${GDBINIT}
 
 .PHONY : code
 code: all
-	@${OBJDUMP} -S os.elf | less
+	@${OBJDUMP} -S ${EXEC}.elf | less
+
+.PHONY : hex
+hex: all
+	@hexdump -C ${EXEC}.bin
 
 .PHONY : clean
 clean:
 	rm -rf *.o *.bin *.elf
-
